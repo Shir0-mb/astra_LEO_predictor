@@ -1,40 +1,39 @@
 """
 fetcher.py
-Downloads LEO TLE catalogs from Celestrak (no auth required).
+Downloads LEO TLE catalogs from Celestrak.
 """
 
 import requests
 
-# Celestrak supplemental catalogs covering most LEO objects
-CELESTRAK_URLS = [
-    "https://celestrak.org/SOCRATES/query.php?CODE=ALL&MIN_RANGE=0&MAX_RANGE=2000&DAYS=1&MAX_MATCHES=1000&ORDERBY=DAYS&TLE=1&FORMAT=tle",  # not ideal
-]
-
-# Better: use the main catalog groups
-CATALOG_URLS = {
-    "active":    "https://celestrak.org/SOCRATES/query.php",
-    "stations":  "https://celestrak.org/SATCAT/tle.php?CATNR=25544",  # ISS only for test
+HEADERS = {
+    "User-Agent": "ASTRA-LEO-Predictor/1.0 (INAF-OAS Bologna; scientific use)"
 }
 
-# Curated Celestrak groups — covers active LEO population well
-GROUPS = [
-    "https://celestrak.org/SOCRATES/query.php?CODE=ALL",
+CATALOG_URLS = [
+    "https://celestrak.org/SOCRATES/query.php?CODE=ALL&MIN_RANGE=0&MAX_RANGE=2000&DAYS=7&MAX_MATCHES=1000&ORDERBY=DAYS&TLE=1&FORMAT=tle",
+    "https://celestrak.org/pub/TLE/catalog.txt",
+    "https://celestrak.org/SATCAT/tle.php",
 ]
 
-def fetch_tles(max_objects: int = 2000) -> list[tuple[str, str, str]]:
-    """
-    Returns list of (name, line1, line2) tuples.
-    Uses multiple Celestrak catalog groups to cover the LEO population.
-    """
-    catalog_urls = [
-        "https://celestrak.org/pub/TLE/catalog.txt",              # full catalog ~10k objects
+# Smaller focused groups as fallback
+GROUP_URLS = [
+    "https://celestrak.org/SOCRATES/query.php?CODE=ALL",
+    "https://celestrak.org/pub/TLE/active.txt",
+    "https://celestrak.org/pub/TLE/stations.txt",
+]
+
+def fetch_tles(max_objects: int = 3000) -> list[tuple[str, str, str]]:
+    """Returns list of (name, line1, line2) tuples."""
+    
+    urls = [
+        "https://celestrak.org/pub/TLE/active.txt",   # ~6000 active satellites
+        "https://celestrak.org/pub/TLE/catalog.txt",  # full catalog
     ]
 
-    # We use the full catalog and filter by period (LEO) in the predictor
-    for url in catalog_urls:
+    for url in urls:
         try:
-            print(f"[fetcher] Downloading TLE catalog from Celestrak...")
-            r = requests.get(url, timeout=30)
+            print(f"[fetcher] Trying {url} ...")
+            r = requests.get(url, headers=HEADERS, timeout=60)
             r.raise_for_status()
             lines = [l.strip() for l in r.text.strip().splitlines() if l.strip()]
             tles = []
@@ -44,9 +43,11 @@ def fetch_tles(max_objects: int = 2000) -> list[tuple[str, str, str]]:
                 line2 = lines[i+2]
                 if line1.startswith("1 ") and line2.startswith("2 "):
                     tles.append((name, line1, line2))
-            print(f"[fetcher] Got {len(tles)} TLEs from catalog")
-            return tles[:max_objects]
+            if tles:
+                print(f"[fetcher] Got {len(tles)} TLEs")
+                return tles[:max_objects]
         except Exception as e:
             print(f"[fetcher] Failed {url}: {e}")
+            continue
 
     return []
