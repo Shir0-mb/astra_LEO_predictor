@@ -51,12 +51,25 @@ def fetch_tles(max_objects: int = 3000) -> list[tuple[str, str, str]]:
 
     lines = [l.strip() for l in resp.text.strip().splitlines() if l.strip()]
     tles = []
-    for i in range(0, len(lines) - 2, 3):
-        name  = lines[i]
-        line1 = lines[i+1]
-        line2 = lines[i+2]
-        if line1.startswith("1 ") and line2.startswith("2 "):
-            tles.append((name, line1, line2))
+
+    # Detect 2-line vs 3-line format
+    # Space-Track often returns 2-line TLEs (no name line)
+    if lines and lines[0].startswith("1 "):
+        # 2-line format: extract NORAD ID as name
+        for i in range(0, len(lines) - 1, 2):
+            line1 = lines[i]
+            line2 = lines[i+1] if i+1 < len(lines) else ""
+            if line1.startswith("1 ") and line2.startswith("2 "):
+                norad = line1[2:7].strip()
+                tles.append((f"NORAD-{norad}", line1, line2))
+    else:
+        # 3-line format: name + line1 + line2
+        for i in range(0, len(lines) - 2, 3):
+            name  = lines[i]
+            line1 = lines[i+1]
+            line2 = lines[i+2]
+            if line1.startswith("1 ") and line2.startswith("2 "):
+                tles.append((name, line1, line2))
 
     print(f"[fetcher] Got {len(tles)} LEO TLEs from Space-Track")
     return tles[:max_objects]
