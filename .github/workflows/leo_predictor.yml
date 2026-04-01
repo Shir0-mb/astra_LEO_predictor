@@ -25,6 +25,9 @@ jobs:
 
       - name: Run LEO Pass Predictor
         env:
+          env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          SPACETRACK_USER:    ${{ secrets.SPACETRACK_USER }}
+          SPACETRACK_PASS:    ${{ secrets.SPACETRACK_PASS }}
         run: python main.py
