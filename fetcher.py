@@ -1,53 +1,62 @@
 """
 fetcher.py
-Downloads TLEs using Celestrak's newer GP query API (less restricted).
+Downloads TLEs from Space-Track.org (official USSPACECOM source).
+Requires free registration at https://www.space-track.org/auth/createAccount
 """
 
 import requests
 
-HEADERS = {
-    "User-Agent": "ASTRA-LEO-Predictor/1.0 (INAF-OAS Bologna; scientific use)"
-}
+BASE_URL = "https://www.space-track.org"
+LOGIN_URL = f"{BASE_URL}/ajaxauth/login"
+# Query: all active LEO objects (period < 128 min), TLE format
+QUERY_URL = (
+    f"{BASE_URL}/basicspacedata/query/class/gp/MEAN_MOTION/%3E11.25"
+    f"/EPOCH/%3Enow-1/orderby/NORAD_CAT_ID/format/tle/limit/3000"
+)
 
 def fetch_tles(max_objects: int = 3000) -> list[tuple[str, str, str]]:
-    """Returns list of (name, line1, line2) tuples."""
+    """
+    Logs into Space-Track.org and downloads LEO TLEs.
+    Requires SPACETRACK_USER and SPACETRACK_PASS environment variables.
+    """
+    import os
+    username = os.environ.get("SPACETRACK_USER")
+    password = os.environ.get("SPACETRACK_PASS")
 
-    # Celestrak GP REST API — newer endpoint, less IP-blocked
-    urls = [
-        "https://celestrak.org/GP/query/?GROUP=active&FORMAT=tle",
-        "https://celestrak.org/GP/query/?GROUP=starlink&FORMAT=tle",
-        # Last resort: N2YO public mirror
-        "https://www.n2yo.com/satellite/tle-list.php?group=active",
-    ]
+    if not username or not password:
+        raise RuntimeError(
+            "SPACETRACK_USER and SPACETRACK_PASS environment variables not set. "
+            "Register for free at https://www.space-track.org/auth/createAccount"
+        )
 
-    for url in urls:
-        try:
-            print(f"[fetcher] Trying {url} ...")
-            r = requests.get(url, headers=HEADERS, timeout=60)
-            r.raise_for_status()
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "ASTRA-LEO-Predictor/1.0 (INAF-OAS Bologna; scientific use)"
+    })
 
-            text = r.text.strip()
-            if not text or len(text) < 100:
-                print(f"[fetcher] Empty response from {url}")
-                continue
+    # Login
+    print("[fetcher] Logging into Space-Track.org...")
+    resp = session.post(LOGIN_URL, data={
+        "identity": username,
+        "password": password
+    }, timeout=30)
+    resp.raise_for_status()
+    if "Login" in resp.text and "Failed" in resp.text:
+        raise RuntimeError("Space-Track login failed — check credentials")
 
-            lines = [l.strip() for l in text.splitlines() if l.strip()]
-            tles = []
-            for i in range(0, len(lines) - 2, 3):
-                name  = lines[i]
-                line1 = lines[i+1]
-                line2 = lines[i+2]
-                if line1.startswith("1 ") and line2.startswith("2 "):
-                    tles.append((name, line1, line2))
+    # Download LEO TLEs
+    print("[fetcher] Downloading LEO TLEs (MEAN_MOTION > 11.25 rev/day)...")
+    resp = session.get(QUERY_URL, timeout=60)
+    resp.raise_for_status()
 
-            if tles:
-                print(f"[fetcher] Got {len(tles)} TLEs from {url}")
-                return tles[:max_objects]
-            else:
-                print(f"[fetcher] No valid TLEs parsed from {url}")
+    lines = [l.strip() for l in resp.text.strip().splitlines() if l.strip()]
+    tles = []
+    for i in range(0, len(lines) - 2, 3):
+        name  = lines[i]
+        line1 = lines[i+1]
+        line2 = lines[i+2]
+        if line1.startswith("1 ") and line2.startswith("2 "):
+            tles.append((name, line1, line2))
 
-        except Exception as e:
-            print(f"[fetcher] Failed {url}: {e}")
-            continue
-
-    return []
+    print(f"[fetcher] Got {len(tles)} LEO TLEs from Space-Track")
+    return tles[:max_objects]
