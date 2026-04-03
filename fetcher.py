@@ -8,10 +8,18 @@ import requests
 
 BASE_URL = "https://www.space-track.org"
 LOGIN_URL = f"{BASE_URL}/ajaxauth/login"
-# Query: all active LEO objects (period < 128 min), TLE format
+# Query: active LEO objects only
+# DECAY_DATE/null-val  → excludes re-entered objects
+# MEAN_MOTION/>11.25   → LEO filter (period < 128 min)
+# EPOCH/>now-3         → TLE no older than 3 days
 QUERY_URL = (
-    f"{BASE_URL}/basicspacedata/query/class/gp/MEAN_MOTION/%3E11.25"
-    f"/EPOCH/%3Enow-1/orderby/NORAD_CAT_ID/format/tle/limit/3000"
+    f"{BASE_URL}/basicspacedata/query/class/gp"
+    f"/DECAY_DATE/null-val"
+    f"/MEAN_MOTION/%3E11.25"
+    f"/EPOCH/%3Enow-3"
+    f"/orderby/NORAD_CAT_ID"
+    f"/format/tle"
+    f"/limit/5000"
 )
 
 def fetch_tles(max_objects: int = 3000) -> list[tuple[str, str, str]]:
