@@ -57,6 +57,9 @@ def classify_orbit(line2: str) -> dict:
     """
     try:
         fields = line2.split()
+        if "07141" in line2:
+            print(f"[DEBUG 07141] fields={fields}")
+            print(f"[DEBUG 07141] e={fields[4]}, n={fields[7]}")
         eccentricity        = float("0." + fields[4])
         mean_motion_rev_day = float(fields[7])
 
