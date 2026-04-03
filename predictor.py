@@ -35,28 +35,37 @@ GM_KM3_S2       = 398600.4418   # Earth gravitational parameter
 def classify_orbit(line2: str) -> dict:
     """
     Compute perigee, apogee and orbit class from TLE line 2.
+    Uses split() instead of fixed column indices for robustness.
+
+    TLE line 2 fields (space-separated):
+        [0] line number (2)
+        [1] NORAD ID
+        [2] inclination
+        [3] RAAN
+        [4] eccentricity  ← 7-digit mantissa, implicit leading "0."
+        [5] argument of perigee
+        [6] mean anomaly
+        [7] mean motion   ← rev/day
+        [8] rev number + checksum (ignored)
 
     Returns:
         {
-            "perigee_km":   float,
-            "apogee_km":    float,
-            "orbit_class":  "STABLE" | "DECAY",
+            "perigee_km":  int,
+            "apogee_km":   int,
+            "orbit_class": "STABLE" | "DECAY" | "UNKNOWN",
         }
     """
     try:
-        mean_motion_rev_day = float(line2[52:63])
-        eccentricity        = float("0." + line2[26:33].strip())
+        fields = line2.split()
+        eccentricity        = float("0." + fields[4])
+        mean_motion_rev_day = float(fields[7])
 
-        n_rad_s  = mean_motion_rev_day * 2 * np.pi / 86400.0
-        a_km     = (GM_KM3_S2 / n_rad_s**2) ** (1/3)
-
+        n_rad_s    = mean_motion_rev_day * 2 * np.pi / 86400.0
+        a_km       = (GM_KM3_S2 / n_rad_s ** 2) ** (1 / 3)
         perigee_km = a_km * (1 - eccentricity) - EARTH_RADIUS_KM
         apogee_km  = a_km * (1 + eccentricity) - EARTH_RADIUS_KM
 
-        if perigee_km < 200.0:
-            orbit_class = "DECAY"
-        else:
-            orbit_class = "STABLE"
+        orbit_class = "DECAY" if perigee_km < 200.0 else "STABLE"
 
         return {
             "perigee_km":  round(perigee_km),
