@@ -74,7 +74,7 @@ def get_observation_windows(ts, eph, observer):
     # Build windows
     delta = timedelta(minutes=BUZZONI_WINDOW_MIN)
 
-    if nautical_sunset:
+    if nautical_sunset is not None:
         ew_start = nautical_sunset
         ew_end   = ts.from_datetime(nautical_sunset.utc_datetime() + delta)
     else:
@@ -83,7 +83,7 @@ def get_observation_windows(ts, eph, observer):
         ew_start = ts.from_datetime(fb)
         ew_end   = ts.from_datetime(fb + delta)
 
-    if nautical_sunrise:
+    if nautical_sunrise is not None:
         mw_end   = nautical_sunrise
         mw_start = ts.from_datetime(nautical_sunrise.utc_datetime() - delta)
     else:
