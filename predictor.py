@@ -8,6 +8,10 @@ within the first 100±12 min following/preceding the nautical twilight."
 → Two windows per night:
     EW (Evening Window): nautical_sunset  → nautical_sunset  + 110 min
     MW (Morning Window): nautical_sunrise - 110 min → nautical_sunrise
+
+Orbit classification (added 2026-04-03):
+    STABLE → 200 km ≤ perigee AND apogee ≤ 1500 km
+    DECAY  → perigee < 200 km
 """
 
 from datetime import datetime, timedelta, timezone
@@ -22,6 +26,50 @@ LOIANO_LON  = 11.0 + 19/60   # 11°19'E
 MIN_ELEVATION_DEG  = 20.0
 MAX_LEO_PERIOD_MIN = 128.0
 BUZZONI_WINDOW_MIN = 110      # minutes after/before nautical twilight
+
+# ── Orbital classification ────────────────────────────────────────────────────
+EARTH_RADIUS_KM = 6371.0
+GM_KM3_S2       = 398600.4418   # Earth gravitational parameter
+
+
+def classify_orbit(line2: str) -> dict:
+    """
+    Compute perigee, apogee and orbit class from TLE line 2.
+
+    Returns:
+        {
+            "perigee_km":   float,
+            "apogee_km":    float,
+            "orbit_class":  "STABLE" | "DECAY",
+        }
+    """
+    try:
+        mean_motion_rev_day = float(line2[52:63])
+        eccentricity        = float("0." + line2[26:33].strip())
+
+        n_rad_s  = mean_motion_rev_day * 2 * np.pi / 86400.0
+        a_km     = (GM_KM3_S2 / n_rad_s**2) ** (1/3)
+
+        perigee_km = a_km * (1 - eccentricity) - EARTH_RADIUS_KM
+        apogee_km  = a_km * (1 + eccentricity) - EARTH_RADIUS_KM
+
+        if perigee_km < 200.0:
+            orbit_class = "DECAY"
+        else:
+            orbit_class = "STABLE"
+
+        return {
+            "perigee_km":  round(perigee_km),
+            "apogee_km":   round(apogee_km),
+            "orbit_class": orbit_class,
+        }
+
+    except Exception:
+        return {
+            "perigee_km":  None,
+            "apogee_km":   None,
+            "orbit_class": "UNKNOWN",
+        }
 
 
 def is_leo(line2: str) -> bool:
@@ -95,7 +143,8 @@ def get_observation_windows(ts, eph, observer):
     return (ew_start, ew_end), (mw_start, mw_end)
 
 
-def find_passes_in_window(sat, observer, eph, t_start, t_end, ts) -> list[dict]:
+def find_passes_in_window(sat, observer, eph, t_start, t_end, ts,
+                          orbit_info: dict) -> list[dict]:
     """Find all visible passes for a single satellite in a given time window."""
     passes = []
     try:
@@ -116,13 +165,16 @@ def find_passes_in_window(sat, observer, eph, t_start, t_end, ts) -> list[dict]:
 
                 if sunlit and alt.degrees >= MIN_ELEVATION_DEG:
                     passes.append({
-                        "name":     sat.name.strip(),
-                        "rise_utc": rise_t.utc_datetime().strftime("%H:%M"),
-                        "culm_utc": culm_t.utc_datetime().strftime("%H:%M:%S"),
-                        "set_utc":  set_t.utc_datetime().strftime("%H:%M"),
-                        "max_el":   round(alt.degrees, 1),
-                        "az_culm":  round(az.degrees, 1),
-                        "dist_km":  round(distance.km),
+                        "name":        sat.name.strip(),
+                        "rise_utc":    rise_t.utc_datetime().strftime("%H:%M"),
+                        "culm_utc":    culm_t.utc_datetime().strftime("%H:%M:%S"),
+                        "set_utc":     set_t.utc_datetime().strftime("%H:%M"),
+                        "max_el":      round(alt.degrees, 1),
+                        "az_culm":     round(az.degrees, 1),
+                        "dist_km":     round(distance.km),
+                        "perigee_km":  orbit_info["perigee_km"],
+                        "apogee_km":   orbit_info["apogee_km"],
+                        "orbit_class": orbit_info["orbit_class"],
                     })
                 i += 3
             else:
@@ -162,9 +214,15 @@ def compute_passes(tles: list[tuple], max_passes: int = 25) -> dict:
             continue
         leo_count += 1
 
-        sat = EarthSatellite(line1, line2, name, ts)
-        evening_passes.extend(find_passes_in_window(sat, observer, eph, ew_start, ew_end, ts))
-        morning_passes.extend(find_passes_in_window(sat, observer, eph, mw_start, mw_end, ts))
+        orbit_info = classify_orbit(line2)
+        sat        = EarthSatellite(line1, line2, name, ts)
+
+        evening_passes.extend(
+            find_passes_in_window(sat, observer, eph, ew_start, ew_end, ts, orbit_info)
+        )
+        morning_passes.extend(
+            find_passes_in_window(sat, observer, eph, mw_start, mw_end, ts, orbit_info)
+        )
 
     evening_passes.sort(key=lambda p: p["max_el"], reverse=True)
     morning_passes.sort(key=lambda p: p["max_el"], reverse=True)
@@ -174,8 +232,8 @@ def compute_passes(tles: list[tuple], max_passes: int = 25) -> dict:
           f"Morning: {len(morning_passes)} passes")
 
     return {
-        "evening": evening_passes[:max_passes],
-        "morning": morning_passes[:max_passes],
+        "evening":  evening_passes[:max_passes],
+        "morning":  morning_passes[:max_passes],
         "ew_start": ew_start.utc_datetime().strftime("%H:%M"),
         "ew_end":   ew_end.utc_datetime().strftime("%H:%M"),
         "mw_start": mw_start.utc_datetime().strftime("%H:%M"),
