@@ -83,7 +83,7 @@ def classify_orbit(line2: str) -> dict:
 
 def is_leo(line2: str) -> bool:
     try:
-        mean_motion = float(line2[52:63])
+        mean_motion = float(line2.split()[7])
         return (1440.0 / mean_motion) < MAX_LEO_PERIOD_MIN
     except Exception:
         return False
