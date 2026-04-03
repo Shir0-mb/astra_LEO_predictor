@@ -16,15 +16,30 @@ def extract_norad_id(name: str) -> str:
     """
     Estrae il NORAD ID numerico dal nome del satellite e lo formatta
     sempre a 5 cifre con zero-padding (es. '561' → '00561').
-    Se il nome non contiene un numero puro, lo restituisce as-is.
+
+    Gestisce i casi:
+      - "NORAD-07141"  → "07141"  (prefisso già presente, da fetcher.py)
+      - "07141"        → "07141"  (numero puro)
+      - "DELTA 1 DEB"  → cerca la parte numerica, altrimenti restituisce as-is
     """
     stripped = name.strip()
-    # Prova a estrarre la parte numerica finale (es. "DELTA 1 DEB" non ha ID)
-    # Il nome nel TLE può essere il satellite name o il NORAD ID stesso
+
+    # Caso più comune: fetcher.py costruisce "NORAD-XXXXX"
+    if stripped.upper().startswith("NORAD-"):
+        numeric = stripped[6:]
+        if numeric.isdigit():
+            return numeric.zfill(5)
+
+    # Numero puro
+    if stripped.isdigit():
+        return stripped.zfill(5)
+
+    # Nome descrittivo (es. "DELTA 1 DEB"): cerca ultima parte numerica
     parts = stripped.split()
     for part in reversed(parts):
         if part.isdigit():
             return part.zfill(5)
+
     return stripped
 
 
